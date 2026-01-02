@@ -26,8 +26,9 @@ def upload_file(file_id, file_path, file_name):
 
     pdf = Pdf.create(id=file_id, name=file_name, user_id=g.user.id)
 
-    # TODO: Defer this to be processed by the worker
-    process_document(pdf.id)
+    # The .delay is what creates the job and sends it to celery worker for
+    # async execution, instead of running it right away
+    process_document.delay(pdf.id)
 
     return pdf.as_dict()
 

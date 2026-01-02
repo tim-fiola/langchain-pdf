@@ -1,3 +1,5 @@
+from pdb import set_trace
+
 from app.web import create_app
 
 flask_app = create_app()
