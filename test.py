@@ -1,3 +1,4 @@
+from cgitb import handler
 from typing import Optional, Union, Any
 from langchain_core.outputs import LLMResult
 from langchain_openai import ChatOpenAI
@@ -11,34 +12,38 @@ from threading import Thread
 
 load_dotenv()
 
-queue = Queue()
-
 
 class StreamingHandler(BaseCallbackHandler):
+    def __init__(self, queue):
+        self.queue = queue
+
     def on_llm_new_token(self, token: str, **kwargs) -> Any:
-        queue.put(token)
+        self.queue.put(token)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> Any:
-        queue.put(None)
+        self.queue.put(None)
 
     def on_llm_error(self, error, **kwargs):
-        queue.put(None)
+        self.queue.put(None)
 
 
-chat = ChatOpenAI(
-    streaming=True,
-    callbacks=[StreamingHandler()]
-)  # Controls how OpenAI responds to LangChain; streaming=True makes OpenAI stream to LangChain no matter what
+# 'streaming=True' controls how OpenAI responds to LangChain; streaming=True
+# makes OpenAI stream to LangChain no matter what
+chat = ChatOpenAI(streaming=True)
 
 prompt = ChatPromptTemplate.from_messages([
     ("human", "{content}")
 ])
 
 
-class StreamingChain(LLMChain):
+# Make a Mixin Class that defines a single function (stream)
+class StreamableChain:
     def stream(self, input):
+        queue = Queue()
+        handler = StreamingHandler(queue)
+
         def task():
-            self(input)  # Runs the chain
+            self(input, callbacks=[handler])  # Runs the chain
 
         # A thread will allow the chain to start, but will then immediately move on to
         # the 'while' loop, instead of waiting for the chain to complete before moving on.
@@ -49,6 +54,14 @@ class StreamingChain(LLMChain):
             if token is None:
                 break
             yield token
+
+
+# Now use the Mixin to pull in the function from the StreamableChain Class to
+# extend the LLMChain Class.  The StreamableChain class ensures that the
+# 'stream' function is present.  This allows us to more easily extend other chains,
+# adding in the 'stream' function
+class StreamingChain(StreamableChain, LLMChain):
+    pass
 
 
 chain = StreamingChain(llm=chat, prompt=prompt)
